@@ -1,37 +1,49 @@
-name: Windows-RDP
+name: Windows-Ngrok
+
+
 on: [push, workflow_dispatch]
 
+
 jobs:
+
   build:
+
+
     runs-on: windows-latest
+
+
     steps:
-    - name: Baixar ngrok
+
+    - name: Download
+
       run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
 
-    - name: Extrair ngrok
-      run: Expand-Archive ngrok.zip -DestinationPath .
+    - name: Extract
 
-    - name: Iniciar ngrok
-      run: |
-        .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-        Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389" -NoNewWindow
+      run: Expand-Archive ngrok.zip
+
+    - name: Auth
+
+      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+
       env:
+
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Esperar ngrok subir
-      run: Start-Sleep -Seconds 15
+    - name: Enable TS
 
-    - name: Obter URL pública do ngrok
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+
+    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+    - name: Create Tunnel
+
+      run: .\ngrok\ngrok.exe tcp 3389
+      
+    - name: Loop
       run: |
-        $retry = 0
-        do {
-          try {
-            $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4040/api/tunnels -ErrorAction Stop
-            $url = ($response.Content | ConvertFrom-Json).tunnels[0].public_url
-            Write-Host "Ngrok URL: $url"
-            $success = $true
-          } catch {
-            Start-Sleep -Seconds 5
-            $retry++
-          }
-        } while (-not $success -and $retry -lt 5)
+        .\loop.ps1
