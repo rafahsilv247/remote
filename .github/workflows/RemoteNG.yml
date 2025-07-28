@@ -1,11 +1,9 @@
 name: Windows-RDP
-
 on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
     - name: Baixar ngrok
       run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
@@ -14,15 +12,26 @@ jobs:
       run: Expand-Archive ngrok.zip -DestinationPath .
 
     - name: Iniciar ngrok
-      run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN; .\ngrok.exe tcp 3389 > ngrok.log &
+      run: |
+        .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+        Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389" -NoNewWindow
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Esperar ngrok
+    - name: Esperar ngrok subir
       run: Start-Sleep -Seconds 15
 
-    - name: Obter link do túnel
+    - name: Obter URL pública do ngrok
       run: |
-        $url = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4040/api/tunnels | ConvertFrom-Json
-        $publicUrl = $url.tunnels[0].public_url
-        Write-Output "Ngrok Tunnel: $publicUrl"
+        $retry = 0
+        do {
+          try {
+            $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4040/api/tunnels -ErrorAction Stop
+            $url = ($response.Content | ConvertFrom-Json).tunnels[0].public_url
+            Write-Host "Ngrok URL: $url"
+            $success = $true
+          } catch {
+            Start-Sleep -Seconds 5
+            $retry++
+          }
+        } while (-not $success -and $retry -lt 5)
